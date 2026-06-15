@@ -1,0 +1,1 @@
+ini khusus folder wasm
