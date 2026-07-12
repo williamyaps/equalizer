@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Video Converter - FFmpeg WASM</title>
+    <title>Ultimate Video Converter - FFmpeg WASM Fix</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -23,7 +23,7 @@
         }
         h2 { text-align: center; color: #00adb5; margin-bottom: 25px; }
         .form-group { margin-bottom: 18px; }
-        label { display: block; margin-bottom: 6px; font-weight: 6px; color: #aaaaaa; }
+        label { display: block; margin-bottom: 6px; font-weight: bold; color: #aaaaaa; }
         input[type="file"], select {
             width: 100%;
             padding: 10px;
@@ -68,21 +68,20 @@
         }
         .download-btn:hover { background: #218838; }
     </style>
-    <!-- Memuat script FFmpeg WASM v0.11.0 (Versi Single Thread paling stabil untuk browser lama) -->
-    <script src="https://unpkg.com"></script>
+    
+    <!-- MENGGUNAKAN CDN JSDELIVR YANG JAUH LEBIH COMPATIBLE DI WINDOWS 7 -->
+    <script src="https://jsdelivr.net"></script>
 </head>
 <body>
 
 <div class="container">
-    <h2>Video Converter WASM</h2>
+    <h2>Video Converter WASM (Fixed)</h2>
     
-    <!-- 1. Menu Upload File Media Video -->
     <div class="form-group">
         <label for="videoInput">Pilih File Video (Format Apapun):</label>
         <input type="file" id="videoInput" accept="video/*">
     </div>
 
-    <!-- 2. Menu Pilihan Format Output -->
     <div class="form-group">
         <label for="formatSelect">Format Target:</label>
         <select id="formatSelect">
@@ -91,16 +90,13 @@
             <option value="avi">AVI</option>
             <option value="mov">MOV</option>
             <option value="wmv">WMV</option>
-            <option value="avchd">AVCHD (MTS)</option>
             <option value="mpeg">MPEG</option>
             <option value="flv">FLV</option>
             <option value="mpg">MPG</option>
             <option value="vob">VOB</option>
-            <option value="rmvb">RMVB</option>
         </select>
     </div>
 
-    <!-- 3. Pilihan Resolusi -->
     <div class="form-group">
         <label for="resSelect">Resolusi:</label>
         <select id="resSelect">
@@ -112,14 +108,13 @@
         </select>
     </div>
 
-    <!-- 4. Pilihan Persentase Kompresi -->
     <div class="form-group">
-        <label for="compressSelect">Tingkat Kompresi (Semakin besar = ukuran makin kecil):</label>
+        <label for="compressSelect">Tingkat Kompresi:</label>
         <select id="compressSelect">
             <option value="23">Normal (Kualitas Bagus)</option>
             <option value="28">Medium (Kompresi 30%)</option>
-            <option value="33">Tinggi (Kompresi 50% - Ukuran Kecil)</option>
-            <option value="38">Ekstrem (Kompresi 70% - Kualitas Rendah)</option>
+            <option value="33">Tinggi (Kompresi 50%)</option>
+            <option value="38">Ekstrem (Kompresi 70%)</option>
         </select>
     </div>
 
@@ -134,99 +129,92 @@
 </div>
 
 <script>
-    // Inisialisasi FFmpeg dari Object Global Jendela Browser
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    // Menggunakan single-thread karena log-level info
-    const ffmpeg = createFFmpeg({ log: true });
-
     const startBtn = document.getElementById('startBtn');
     const statusDiv = document.getElementById('status');
     const videoInput = document.getElementById('videoInput');
     const downloadArea = document.getElementById('downloadArea');
     const downloadLink = document.getElementById('downloadLink');
 
-    // Memuat Core WebAssembly secara Asynchronous
+    let ffmpeg = null;
+
     async function initFFmpeg() {
         try {
-            statusDiv.innerText = "Sedang mengunduh core WebAssembly dari CDN...";
+            // Proteksi pengecekan library biar gak nemu "ReferenceError" lagi
+            if (typeof FFmpeg === 'undefined') {
+                throw new Error("Library FFmpeg gagal diunduh dari internet. Coba cek koneksi atau buka via HTTP server lokal.");
+            }
+
+            statusDiv.innerText = "Menginisialisasi mesin WebAssembly...";
+            
+            // Cara inisialisasi yang lebih aman untuk objek FFmpeg global
+            const { createFFmpeg } = FFmpeg;
+            ffmpeg = createFFmpeg({ log: true });
+
             await ffmpeg.load();
+            
             statusDiv.innerText = "FFmpeg WASM Berhasil Dimuat! Silakan masukkan video.";
             startBtn.innerText = "Mulai Konversi Video";
             startBtn.disabled = false;
         } catch (err) {
-            statusDiv.innerText = "Gagal memuat FFmpeg. Pastikan browser mendukung WASM / gunakan browser versi terbaru.";
+            statusDiv.innerText = `Gagal: ${err.message}\n\nTips: Pastikan kamu menjalankan file HTML ini lewat VS Code Live Server / Localhost, bukan langsung klik 2x dari Windows Explorer!`;
             console.error(err);
         }
     }
 
-    // Jalankan inisialisasi saat halaman terbuka
+    // Jalankan pemuatan
     initFFmpeg();
 
-    // Event Handler untuk proses Transcoding
     startBtn.addEventListener('click', async () => {
-        const file = videoInput.files[0];
-        if (!file) {
+        const files = videoInput.files;
+        if (files.length === 0) {
             alert("Bro, pilih filenya dulu!");
             return;
         }
 
+        const file = files[0];
         startBtn.disabled = true;
         downloadArea.style.display = "none";
-        statusDiv.innerText = "Membaca file video ke Virtual File System WASM...";
+        statusDiv.innerText = "Membaca file video ke Virtual File System...";
 
         const inputName = file.name;
-        // Ambil ekstensi format output pilihan user
         const outputExt = document.getElementById('formatSelect').value;
         const outputName = `output.${outputExt}`;
 
-        // Salin file lokal ke memori sandbox FFmpeg
+        // Menggunakan FFmpeg.fetchFile jika tersedia, atau buat cadangan manual
+        const { fetchFile } = FFmpeg;
         ffmpeg.FS('writeFile', inputName, await fetchFile(file));
 
-        // Mempersiapkan parameter CLI FFmpeg secara dinamis
         const resChoice = document.getElementById('resSelect').value;
-        const crfValue = document.getElementById('compressSelect').value; // Nilai CRF untuk kontrol kualitas encoder x264
+        const crfValue = document.getElementById('compressSelect').value;
 
         let ffmpegArgs = ['-i', inputName];
 
-        // Tambahkan filter resolusi jika dipilih selain original
         if (resChoice !== 'original') {
             const [width, height] = resChoice.split('x');
             ffmpegArgs.push('-vf', `scale=${width}:${height}`);
         }
 
-        // Terapkan pengaturan kompresi memakai libx264 (Constant Rate Factor)
-        ffmpegArgs.push('-c:v', 'libx264', '-crf', crfValue, '-preset', 'ultrafast');
-        
-        // Output nama file target
-        ffmpegArgs.push(outputName);
+        ffmpegArgs.push('-c:v', 'libx264', '-crf', crfValue, '-preset', 'ultrafast', outputName);
+        statusDiv.innerText = `Sedang memproses konversi ke format ${outputExt.toUpperCase()}...`;
 
-        statusDiv.innerText = `Sedang memproses konversi ke format ${outputExt.toUpperCase()}...\nMohon tunggu, browser jangan ditutup.`;
-
-        // Menangkap log output dari FFmpeg untuk ditampilkan di UI
-        ffmpeg.setLogger(({ type, message }) => {
+        ffmpeg.setLogger(({ message }) => {
             if(message.includes('frame=')) {
                 statusDiv.innerText = `Status Pemrosesan:\n${message}`;
             }
         });
 
         try {
-            // Eksekusi perintah FFmpeg CLI di dalam browser!
             await ffmpeg.run(...ffmpegArgs);
 
-            // Membaca file hasil dari Virtual Filesystem ke Blob JavaScript
             const data = ffmpeg.FS('readFile', outputName);
-            
-            // Konversi format mentah menjadi URL objek unduhan browser
             const videoBlob = new Blob([data.buffer], { type: `video/${outputExt}` });
             const url = URL.createObjectURL(videoBlob);
 
-            // Tampilkan tombol unduh
             downloadLink.href = url;
             downloadLink.download = `converted_video.${outputExt}`;
             downloadArea.style.display = "block";
             statusDiv.innerText = "Proses selesai 100%!";
 
-            // Bersihkan memori virtual filesystem sandbox biar gak leak/crash
             ffmpeg.FS('unlink', inputName);
             ffmpeg.FS('unlink', outputName);
 
